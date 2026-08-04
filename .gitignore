@@ -21,7 +21,6 @@ temp/
 
 # ===== Node.js =====
 node_modules/
-dist/
 
 # ===== IDE =====
 .idea/

@@ -90,7 +90,7 @@ export function useAuth() {
   }, [])
 
   // 获取认证 headers（用于需要登录的接口）
-  const authHeaders = useCallback(() => {
+  const authHeaders = useCallback((): Record<string, string> => {
     if (!token) return {}
     return { Authorization: `Bearer ${token}` }
   }, [token])
