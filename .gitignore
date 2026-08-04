@@ -1,0 +1,33 @@
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ===== 环境配置（含密钥）=====
+.env
+
+# ===== 数据库 =====
+*.db
+*.sqlite3
+
+# ===== Chroma 向量库 =====
+chroma_db/
+
+# ===== 临时文件 =====
+temp/
+
+# ===== Node.js =====
+node_modules/
+dist/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+
+# ===== 系统 =====
+.DS_Store
+Thumbs.db
