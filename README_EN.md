@@ -27,12 +27,6 @@ So the three modes are implemented as independent pipelines on a shared frontend
 - **Agent**: LangChain tool calling (knowledge base retrieval / web search / current time) with the reasoning trace visualized in the UI
 - **Multi-user support**: JWT authentication, conversations and messages scoped by `user_id`, chat history persisted in PostgreSQL
 
-## Screenshots
-
-| Streaming chat | RAG knowledge Q&A | Agent reasoning |
-|---|---|---|
-| ![Chat](docs/screenshots/chat.png) | ![RAG](docs/screenshots/rag.png) | ![Agent](docs/screenshots/agent.png) |
-
 ## Tech stack
 
 | Layer | Technologies |

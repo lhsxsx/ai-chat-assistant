@@ -27,12 +27,6 @@
 - **Agent 智能体**：基于 LangChain 工具调用（知识库检索 / 搜索引擎 / 当前时间），前端可视化思考过程
 - **多用户体系**：JWT 鉴权，会话与消息按 `user_id` 隔离，对话历史持久化到 PostgreSQL
 
-## 界面预览
-
-| 流式对话 | RAG 知识库问答 | Agent 推理过程 |
-|---|---|---|
-| ![流式对话](docs/screenshots/chat.png) | ![RAG 问答](docs/screenshots/rag.png) | ![Agent 推理](docs/screenshots/agent.png) |
-
 ## 技术栈
 
 | 层 | 技术 |
