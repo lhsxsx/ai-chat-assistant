@@ -1,6 +1,24 @@
 # AI 对话助手
 
+**中文** | [English](README_EN.md)
+
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![LangChain](https://img.shields.io/badge/LangChain-1.x-1C3C3C?logo=langchain&logoColor=white)](https://python.langchain.com/)
+
 基于 FastAPI + React 的全栈 AI 对话应用，支持三种交互模式：纯对话、RAG 知识库问答、Agent 智能体。
+
+## 为什么做这个
+
+主流 AI 应用教程大多停在前端调接口、把模型回复拼成字符串。我想搞清楚三件更实际的事：
+
+- **流式响应在真实链路上怎么落地**：SSE 分块到达时如何解析、跨 chunk 粘包怎么处理、用户中途想停下怎么办
+- **RAG 的每一步到底在做什么**：切片粒度对召回的影响、检索结果怎么回填给模型、引用来源怎么让用户信任
+- **Agent 的"思考"能不能被看见**：工具调用的中间过程如果只给最终答案，用户无法判断结论是否可信
+
+所以这个项目把三种模式做成了同一套前后端架构下的三条独立链路，重点在流式通信、检索和工具编排的工程实现，而不是堆功能。
 
 ## 功能
 
@@ -8,6 +26,12 @@
 - **RAG 知识库问答**：上传 PDF → 切片 → 向量化 → 相似度检索 → 上下文拼装，回答带来源溯源
 - **Agent 智能体**：基于 LangChain 工具调用（知识库检索 / 搜索引擎 / 当前时间），前端可视化思考过程
 - **多用户体系**：JWT 鉴权，会话与消息按 `user_id` 隔离，对话历史持久化到 PostgreSQL
+
+## 界面预览
+
+| 流式对话 | RAG 知识库问答 | Agent 推理过程 |
+|---|---|---|
+| ![流式对话](docs/screenshots/chat.png) | ![RAG 问答](docs/screenshots/rag.png) | ![Agent 推理](docs/screenshots/agent.png) |
 
 ## 技术栈
 
