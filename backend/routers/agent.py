@@ -20,7 +20,7 @@ async def agent_endpoint(q: Question, user: dict = Depends(get_current_user)):
     - 也可以直接回答简单问题
     """
     try:
-        answer = ask_agent(q.question)
+        answer = ask_agent(q.question, user["user_id"])
         # 落库
         if q.conversation_id is not None:
             add_message(q.conversation_id, "user", q.question, user_id=user["user_id"])
@@ -50,7 +50,7 @@ async def agent_stream(q: Question, user: dict = Depends(get_current_user)):
     def event_stream():
         final_answer = ""
         try:
-            for event in stream_ask_agent(q.question):
+            for event in stream_ask_agent(q.question, user["user_id"]):
                 ev_type = event.get("type", "")
                 content = event.get("content", "")
                 if ev_type == "answer":

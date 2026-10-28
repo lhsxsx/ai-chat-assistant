@@ -23,18 +23,15 @@ embeddings = OpenAIEmbeddings(
     openai_api_base=os.getenv("OPENAI_API_BASE")
 )
 
-# 尝试加载已存在的向量库
-try:
+def get_user_retriever(user_id: int):
+    """按 user_id 构建检索器，只检索该用户自己上传的文档，避免跨租户数据泄漏。"""
     vector_store = Chroma(
         persist_directory=VECTOR_DB_DIR,
         embedding_function=embeddings
     )
-    # 创建检索器：每次检索最相似的 3 个文档块
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
-    print(f"✅ 向量库加载成功，路径：{VECTOR_DB_DIR}")
-except Exception as e:
-    print(f"⚠️ 向量库加载失败（可能还没有上传过 PDF）：{e}")
-    retriever = None
+    return vector_store.as_retriever(
+        search_kwargs={"k": 3, "filter": {"user_id": user_id}}
+    )
 
 
 # 定义请求体格式
@@ -50,15 +47,15 @@ async def rag_answer(query: RAGQuery, user: dict = Depends(get_current_user)):
     1. 在向量库中检索相关文档片段
     2. 将片段作为上下文，让 AI 基于这些内容回答
     """
-    # 检查向量库是否可用
-    if retriever is None:
+    # 1. 检索当前用户自己的文档
+    try:
+        retriever = get_user_retriever(user["user_id"])
+        docs = retriever.invoke(query.question)
+    except Exception as e:
         raise HTTPException(
             status_code=400,
-            detail="向量数据库未初始化，请先通过 /upload/ 接口上传 PDF 文件。"
+            detail=f"向量数据库不可用，请先通过 /upload/ 接口上传 PDF 文件：{e}"
         )
-
-    # 1. 检索相关文档
-    docs = retriever.invoke(query.question)
 
     # 如果没找到相关内容
     if not docs:

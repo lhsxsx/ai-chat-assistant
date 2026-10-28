@@ -1,0 +1,29 @@
+# AI 对话助手 - 后端依赖
+# 安装：pip install -r requirements.txt
+
+# ===== Web 框架 =====
+fastapi==0.141.1
+uvicorn==0.52.0
+python-multipart==0.0.32
+
+# ===== 数据库 =====
+SQLAlchemy==2.0.51
+psycopg2-binary==2.9.12
+
+# ===== 配置与数据校验 =====
+pydantic==2.13.4
+python-dotenv==1.2.2
+
+# ===== 认证 =====
+PyJWT==2.13.0
+
+# ===== LLM / RAG / Agent =====
+langchain==1.3.14
+langchain-core==1.5.3
+langchain-community==0.4.2
+langchain-openai==1.4.1
+langchain-chroma==1.1.0
+langchain-text-splitters==1.1.2
+chromadb==1.5.9
+pypdf==6.14.2
+duckduckgo-search==8.1.1

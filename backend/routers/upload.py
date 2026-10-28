@@ -61,6 +61,10 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
         if not chunks:
             raise Exception("PDF 内容为空，无法处理")
 
+        # 给每个切片打上 user_id 标记，检索时按此过滤，避免跨用户读取私有文档
+        for chunk in chunks:
+            chunk.metadata["user_id"] = user["user_id"]
+
         # 4. 向量化并存入 Chroma（持久化，新版自动落盘无需 persist()）
         vector_store = Chroma.from_documents(
             documents=chunks,
@@ -99,8 +103,8 @@ async def get_knowledge_list(user: dict = Depends(get_current_user)):
             embedding_function=embeddings
         )
         
-        # 获取所有文档的元数据
-        collection = vector_store.get()
+        # 获取所有文档的元数据（只统计当前用户自己的文档）
+        collection = vector_store.get(where={"user_id": user["user_id"]})
         
         if not collection or not collection['ids']:
             return {

@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    allowedHosts: true,
     proxy: {
       // 把后端接口代理到 FastAPI（默认 8000 端口）
       '/chat': {

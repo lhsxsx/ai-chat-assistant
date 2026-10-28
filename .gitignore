@@ -30,3 +30,6 @@ node_modules/
 # ===== 系统 =====
 .DS_Store
 Thumbs.db
+
+# ===== 个人资料 =====
+*.docx

@@ -1,4 +1,5 @@
 import os
+from contextvars import ContextVar
 from datetime import datetime
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -10,7 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
 
-# ========== 1. 加载向量库（和 RAG 共用） ==========
+# ========== 1. 向量库（和 RAG 共用） ==========
 VECTOR_DB_DIR = "./chroma_db"
 embeddings = OpenAIEmbeddings(
     model=os.getenv("EMBEDDING_MODEL", "embedding-3"),
@@ -18,16 +19,21 @@ embeddings = OpenAIEmbeddings(
     base_url=os.getenv("OPENAI_API_BASE")
 )
 
-try:
+# 当前请求的用户 ID（调用 Agent 前注入，供知识库工具做租户隔离）
+current_user_id: ContextVar[int | None] = ContextVar("current_user_id", default=None)
+
+
+def _get_user_retriever(user_id: int | None):
+    """按 user_id 构建检索器，只检索该用户自己上传的文档。未登录时返回 None。"""
+    if user_id is None:
+        return None
     vector_store = Chroma(
         persist_directory=VECTOR_DB_DIR,
         embedding_function=embeddings
     )
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
-    print("✅ Agent 已加载向量库")
-except Exception as e:
-    print(f"⚠️ Agent 加载向量库失败：{e}")
-    retriever = None
+    return vector_store.as_retriever(
+        search_kwargs={"k": 3, "filter": {"user_id": user_id}}
+    )
 
 
 # ========== 2. 工具1：知识库检索 ==========
@@ -36,8 +42,9 @@ def rag_tool_func(query: str) -> str:
     """从用户上传的 PDF 文档知识库中检索信息并生成回答。
     当问题明确涉及“文档内容”“上传的文件”“知识库”时，优先使用这个工具。
     输入 query 为用户原始问题或检索关键词。"""
+    retriever = _get_user_retriever(current_user_id.get())
     if retriever is None:
-        return "知识库尚未初始化，请先通过 /upload/ 接口上传 PDF 文件后再重试。"
+        return "知识库尚未初始化，请先登录并通过 /upload/ 接口上传 PDF 文件后再重试。"
 
     try:
         docs = retriever.invoke(query)
@@ -140,8 +147,10 @@ def _build_agent():
 agent = _build_agent()
 
 
-def ask_agent(question: str) -> str:
+def ask_agent(question: str, user_id: int | None = None) -> str:
     """调用 Agent 回答问题。对外稳定返回字符串，任何异常都封装为友好文案。"""
+    # 注入当前用户，供知识库工具做租户隔离
+    current_user_id.set(user_id)
     if not question or not str(question).strip():
         return "请输入有效的问题。"
 
@@ -162,7 +171,7 @@ def ask_agent(question: str) -> str:
         return f"Agent 执行失败：{e}"
 
 
-def stream_ask_agent(question: str):
+def stream_ask_agent(question: str, user_id: int | None = None):
     """流式调用 Agent，逐步 yield 思考过程事件。
 
     每个事件是 dict，格式：
@@ -172,6 +181,9 @@ def stream_ask_agent(question: str):
       {"type": "answer",      "content": "..."}   # 最终答案
       {"type": "error",       "content": "..."}   # 错误
     """
+    # 注入当前用户，供知识库工具做租户隔离
+    current_user_id.set(user_id)
+
     if not question or not str(question).strip():
         yield {"type": "error", "content": "请输入有效的问题。"}
         return
