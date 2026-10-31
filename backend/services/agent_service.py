@@ -5,18 +5,15 @@ from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
+from embeddings import get_embeddings
 
 load_dotenv()
 
 # ========== 1. 向量库（和 RAG 共用） ==========
 VECTOR_DB_DIR = "./chroma_db"
-embeddings = OpenAIEmbeddings(
-    model=os.getenv("EMBEDDING_MODEL", "embedding-3"),
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_API_BASE")
-)
+embeddings = get_embeddings()
 
 # 当前请求的用户 ID（调用 Agent 前注入，供知识库工具做租户隔离）
 current_user_id: ContextVar[int | None] = ContextVar("current_user_id", default=None)

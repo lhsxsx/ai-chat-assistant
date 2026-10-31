@@ -8,6 +8,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
+from embeddings import get_embeddings
 from auth import get_current_user
 from database import create_document, delete_document, list_documents
 
@@ -22,12 +23,8 @@ VECTOR_DB_DIR = "./chroma_db"  # 向量库持久化目录
 os.makedirs(TEMP_DIR, exist_ok=True)
 os.makedirs(VECTOR_DB_DIR, exist_ok=True)
 
-# 初始化嵌入模型（智谱的 embedding-3）
-embeddings = OpenAIEmbeddings(
-    model=os.getenv("EMBEDDING_MODEL", "embedding-3"),
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
-    openai_api_base=os.getenv("OPENAI_API_BASE")
-)
+# 初始化嵌入模型（本地 bge-small-zh，与检索端保持一致）
+embeddings = get_embeddings()
 
 
 @router.post("/")

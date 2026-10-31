@@ -5,8 +5,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
+from embeddings import get_embeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import AIMessage, HumanMessage
 from database import add_message, get_recent_messages
@@ -23,11 +24,7 @@ VECTOR_DB_DIR = "./chroma_db"
 HISTORY_MESSAGES = 6
 
 # 初始化嵌入模型（必须和上传时用的模型完全一致）
-embeddings = OpenAIEmbeddings(
-    model=os.getenv("EMBEDDING_MODEL", "embedding-3"),
-    openai_api_key=os.getenv("OPENAI_API_KEY"),
-    openai_api_base=os.getenv("OPENAI_API_BASE")
-)
+embeddings = get_embeddings()
 
 
 def get_user_retriever(user_id: int):

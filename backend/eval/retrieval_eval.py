@@ -20,8 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
+from embeddings import get_embeddings
 
 load_dotenv()
 
@@ -42,11 +42,7 @@ def load_retriever(pdf_path: str, chunk_size: int, chunk_overlap: int, k: int):
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     chunks = splitter.split_documents(documents)
 
-    embeddings = OpenAIEmbeddings(
-        model=os.getenv("EMBEDDING_MODEL", "embedding-3"),
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_API_BASE"),
-    )
+    embeddings = get_embeddings()
     # 内存态向量库，不写磁盘，避免污染线上 chroma_db
     vector_store = Chroma.from_documents(
         documents=chunks,
