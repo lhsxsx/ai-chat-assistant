@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useChat, type ChatMode } from './useChatStream'
 import { ThinkingPanel } from './ThinkingPanel'
 import { useAuth } from './useAuth'
@@ -15,6 +17,42 @@ const MODE_LABEL: Record<ChatMode, string> = {
   chat: '聊天',
   rag: 'RAG',
   agent: 'Agent',
+}
+
+// ===== 内联 SVG 图标 =====
+const IconPlus = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+)
+const IconChat = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
+)
+const IconDoc = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>
+)
+const IconSpark = ({ size = 15 }: { size?: number }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor"><path d="M12 2l2.35 6.65L21 11l-6.65 2.35L12 20l-2.35-6.65L3 11l6.65-2.35L12 2z" /></svg>
+)
+const IconSend = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+)
+const IconStop = () => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>
+)
+const IconUser = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 12a4.5 4.5 0 1 0-4.5-4.5A4.5 4.5 0 0 0 12 12zm0 2.2c-4.5 0-8.2 2.3-8.2 5.1V21h16.4v-1.7c0-2.8-3.7-5.1-8.2-5.1z" /></svg>
+)
+const IconBook = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
+)
+const IconUpload = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></svg>
+)
+
+// 各模式下的快捷提问
+const SUGGESTIONS: Record<ChatMode, string[]> = {
+  chat: ['用通俗的语言解释什么是 RAG', '帮我写一段简洁的自我介绍', '把「今天天气不错」翻译成英文'],
+  rag: ['总结一下文档的核心内容', '文档里提到了哪些技术栈？', '文档的主要观点是什么？'],
+  agent: ['现在几点了？今天是星期几？', '帮我搜索今天的科技新闻', '知识库里讲了什么？'],
 }
 
 // 格式化会话时间
@@ -160,13 +198,22 @@ function App() {
       {auth.isAuthenticated && (
       <aside className="sidebar">
         <div className="sidebar-header">
+          <div className="brand">
+            <div className="brand-logo"><IconSpark size={16} /></div>
+            <div className="brand-text">AI 对话助手</div>
+          </div>
           <button className="btn-new-chat" onClick={newConversation} disabled={loading}>
-            + 新建对话
+            <IconPlus />
+            <span>新建对话</span>
           </button>
         </div>
         <div className="conv-list">
+          <div className="conv-list-label">历史对话</div>
           {conversations.length === 0 && (
-            <div className="conv-empty">暂无历史对话</div>
+            <div className="conv-empty">
+              <div className="conv-empty-icon">💬</div>
+              暂无历史对话
+            </div>
           )}
           {conversations.map((conv) => (
             <div
@@ -198,7 +245,7 @@ function App() {
         {/* ===== 知识库列表 ===== */}
         <div className="knowledge-section">
           <div className="knowledge-header">
-            <span className="knowledge-title">📚 知识库</span>
+            <span className="knowledge-title"><IconBook /> 知识库</span>
             {loadingKnowledge && <span className="knowledge-loading">加载中…</span>}
           </div>
           <div className="knowledge-list">
@@ -231,7 +278,8 @@ function App() {
             onClick={handleUploadClick}
             disabled={uploading}
           >
-            {uploading ? '上传中…' : '📤 上传 PDF'}
+            <IconUpload />
+            <span>{uploading ? '上传中…' : '上传 PDF'}</span>
           </button>
           <input
             ref={fileInputRef}
@@ -247,14 +295,17 @@ function App() {
       {/* ===== 主区域 ===== */}
       <main className="chat-main">
         <header className="chat-header">
-          <h1>AI 对话助手</h1>
-          <div className="header-right">
+          <div className="header-left">
+            <h1>{MODE_LABEL[mode]}模式</h1>
             <div className="header-info">
-              {currentConvId !== null ? `会话 #${currentConvId}` : '新会话'} · {MODE_LABEL[mode]} 模式
+              {currentConvId !== null ? `会话 #${currentConvId}` : '新会话'}
             </div>
+          </div>
+          <div className="header-right">
             {auth.isAuthenticated && (
               <div className="user-info">
-                <span className="user-name">👤 {auth.user?.username}</span>
+                <span className="user-avatar"><IconUser /></span>
+                <span className="user-name">{auth.user?.username}</span>
                 <button className="btn-logout" onClick={auth.logout}>
                   退出
                 </button>
@@ -266,20 +317,31 @@ function App() {
         <div className="chat-messages" ref={scrollRef}>
           {messages.length === 0 && (
             <div className="empty-tip">
-              <p>👋 你好！选择模式后输入问题开始对话</p>
-              <p className="sub">
-                聊天：流式对话 · RAG：基于上传文档问答 · Agent：智能体自动调用工具
+              <div className="empty-logo"><IconSpark size={30} /></div>
+              <h2>你好，{auth.user?.username || '访客'} 👋</h2>
+              <p className="empty-desc">
+                {mode === 'chat' && '流式对话，逐字输出，支持随时中断'}
+                {mode === 'rag' && '基于你上传的文档问答，回答带来源溯源'}
+                {mode === 'agent' && '智能体自动调用工具，思考过程全程可见'}
               </p>
-              <p className="sub">💡 左侧可查看历史记录，点击「新建对话」开始</p>
-              {mode === 'rag' && (
-                <p className="sub warn">💡 RAG 模式请先点击左下角「上传 PDF」</p>
+              <div className="suggestion-chips">
+                {SUGGESTIONS[mode].map((s) => (
+                  <button key={s} className="suggestion-chip" onClick={() => !loading && send(s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+              {mode === 'rag' && knowledgeList.length === 0 && (
+                <p className="sub warn">💡 RAG 模式请先在左侧「上传 PDF」</p>
               )}
             </div>
           )}
 
           {messages.map((msg, idx) => (
             <div key={idx} className={`msg-row ${msg.role}`}>
-              <div className="msg-avatar">{msg.role === 'user' ? '🧑' : '🤖'}</div>
+              <div className={`msg-avatar ${msg.role === 'user' ? 'avatar-user' : 'avatar-bot'}`}>
+                {msg.role === 'user' ? <IconUser /> : <IconSpark size={17} />}
+              </div>
               <div className="msg-main">
                 {msg.mode && <div className="msg-mode-tag">{MODE_LABEL[msg.mode]}</div>}
                 {/* Agent 思考过程折叠面板 */}
@@ -289,10 +351,17 @@ function App() {
                     <ThinkingPanel steps={msg.steps} streaming={msg.streaming} />
                   )}
                 <div className="msg-bubble">
-                  <div className="msg-content">
-                    {msg.content}
-                    {msg.streaming && <span className="cursor">▍</span>}
-                  </div>
+                  {msg.role === 'assistant' ? (
+                    <div className="msg-content markdown">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      {msg.streaming && <span className="cursor">▍</span>}
+                    </div>
+                  ) : (
+                    <div className="msg-content">
+                      {msg.content}
+                      {msg.streaming && <span className="cursor">▍</span>}
+                    </div>
+                  )}
                 </div>
                 {msg.role === 'assistant' &&
                   !msg.streaming &&
@@ -315,35 +384,41 @@ function App() {
         {/* ===== 底部输入区 + 模式切换 ===== */}
         <div className="chat-bottom">
           <div className="mode-tabs">
-            {MODE_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                className={`mode-tab ${mode === tab.key ? 'active' : ''}`}
-                onClick={() => handleModeChange(tab.key)}
-                disabled={loading}
-                title={tab.desc}
-              >
-                <span className="tab-label">{tab.label}</span>
-                <span className="tab-desc">{tab.desc}</span>
-              </button>
-            ))}
+            {MODE_TABS.map((tab) => {
+              const TabIcon = tab.key === 'chat' ? IconChat : tab.key === 'rag' ? IconDoc : IconSpark
+              return (
+                <button
+                  key={tab.key}
+                  className={`mode-tab ${mode === tab.key ? 'active' : ''}`}
+                  onClick={() => handleModeChange(tab.key)}
+                  disabled={loading}
+                  title={tab.desc}
+                >
+                  <TabIcon />
+                  <span className="tab-label">{tab.label}</span>
+                  <span className="tab-desc">{tab.desc}</span>
+                </button>
+              )
+            })}
           </div>
           <form className="chat-input" onSubmit={handleSubmit}>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={`[${MODE_LABEL[mode]} 模式] 输入你的问题…`}
+              placeholder={`[${MODE_LABEL[mode]} 模式] 输入你的问题，Enter 发送，Shift+Enter 换行`}
               rows={1}
               disabled={loading}
             />
             {loading ? (
-              <button type="button" className="btn-stop" onClick={stop}>
-                停止
+              <button type="button" className="btn-stop" onClick={stop} title="停止生成">
+                <IconStop />
+                <span>停止</span>
               </button>
             ) : (
-              <button type="submit" className="btn-send" disabled={!input.trim()}>
-                发送
+              <button type="submit" className="btn-send" disabled={!input.trim()} title="发送">
+                <IconSend />
+                <span>发送</span>
               </button>
             )}
           </form>

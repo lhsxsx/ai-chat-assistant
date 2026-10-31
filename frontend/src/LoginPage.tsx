@@ -33,7 +33,9 @@ export function LoginPage({ auth, onClose }: Props) {
             ← 返回聊天
           </button>
         )}
-        <div className="login-logo">🤖</div>
+        <div className="login-logo">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M12 2l2.35 6.65L21 11l-6.65 2.35L12 20l-2.35-6.65L3 11l6.65-2.35L12 2z" /></svg>
+        </div>
         <h1 className="login-title">AI 对话助手</h1>
         <p className="login-subtitle">
           {mode === 'login' ? '登录以使用 RAG 和 Agent 功能' : '创建账号开始使用'}
