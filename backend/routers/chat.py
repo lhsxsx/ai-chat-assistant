@@ -14,6 +14,13 @@ load_dotenv()
 # 创建一个路由实例，前缀为 /chat，标签用于文档分组
 router = APIRouter(prefix="/chat", tags=["聊天"])
 
+# 统一输出格式：纯文本，避免前端把 ** / ## / emoji 原样显示成杂乱字符
+SYSTEM_PROMPT = (
+    "你是一个中文助手。回答简洁准确。"
+    "输出纯文本：不要使用 Markdown 标记（如 **、##、>、反引号）、不要使用 emoji 或装饰性符号，"
+    "不要用加粗强调，直接用自然段落和普通短横线列表。"
+)
+
 
 # 定义请求体的数据格式（前端发送 JSON 必须符合这个格式）
 class ChatRequest(BaseModel):
@@ -40,7 +47,7 @@ async def chat_endpoint(request: ChatRequest, user: dict | None = Depends(get_cu
         )
 
         # 2. 调用智谱
-        response = llm.invoke(request.question)
+        response = llm.invoke([("system", SYSTEM_PROMPT), ("human", request.question)])
 
         # 3. 落库（若提供 conversation_id）
         if request.conversation_id is not None:
@@ -75,7 +82,7 @@ async def chat_stream(request: ChatRequest, user: dict | None = Depends(get_curr
                 temperature=0.2,
                 streaming=True,
             )
-            for chunk in llm.stream(request.question):
+            for chunk in llm.stream([("system", SYSTEM_PROMPT), ("human", request.question)]):
                 token = chunk.content if hasattr(chunk, "content") else ""
                 if not token:
                     continue

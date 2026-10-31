@@ -59,7 +59,9 @@ def _build_prompt() -> ChatPromptTemplate:
          "注意：\n"
          "1. 如果上下文中没有提到相关信息，请直接说'找不到相关信息'，不要编造。\n"
          "2. 结合【对话历史】理解用户问题中的指代和省略（如“它”“这个”“上面提到的”）。\n"
-         "3. 回答要简洁、准确，用中文。\n\n"
+         "3. 回答要简洁、准确，用中文。\n"
+         "4. 输出纯文本：不要使用 Markdown 标记（如 **、##、>、反引号）、不要使用 emoji 或装饰性符号，"
+         "直接用自然段落和普通短横线列表。\n\n"
          "【上下文】\n{context}"),
         MessagesPlaceholder("history", optional=True),
         ("human", "{question}")

@@ -119,6 +119,8 @@ def _build_agent():
         "你是一个会调用工具的中文智能助手。"
         "你可以选择调用【知识库检索】或【搜索引擎】，也可以根据常识直接回答简单问题。"
         "回答使用简洁的中文。"
+        "输出纯文本：不要使用 Markdown 标记（如 **、##、>、反引号）、不要使用 emoji 或装饰性符号，"
+        "不要用加粗强调，直接用自然段落和普通短横线列表。"
         "如果工具返回异常提示或空内容，不要反复尝试同一工具，直接基于已有信息给出回答，"
         "或在回答中明确告知当前工具不可用。"
     )
@@ -185,8 +187,14 @@ def stream_ask_agent(question: str, user_id: int | None = None):
             stream_mode="updates",
         )
         final_answer = ""
+        pending: list[dict] = []  # 缓冲当前节点产生的待分类事件
         for update in stream:
-            # update 形如 {"agent": {"messages": [...]}} 或 {"tools": {"messages": [...]}}
+            # update 形如 {"model": {"messages": [...]}} 或 {"tools": {"messages": [...]}}
+            # 把上一轮缓冲的事件 flush 掉：既然又有了新 update，说明上一轮不是最后一轮，
+            # 其中没有工具调用的 AI 文本只是中间思考，不是最终答案
+            for ev in pending:
+                yield ev
+            pending = []
             for node_name, node_payload in update.items():
                 messages = node_payload.get("messages", []) if isinstance(node_payload, dict) else []
                 for msg in messages:
@@ -197,34 +205,33 @@ def stream_ask_agent(question: str, user_id: int | None = None):
                         content = getattr(msg, "content", "") or ""
                         tool_calls = getattr(msg, "tool_calls", None) or []
                         if tool_calls:
-                            # 这是一个工具调用动作
+                            # 这是一个工具调用动作，直接推送（不可能成为最终答案）
+                            if content and content.strip():
+                                pending.append({"type": "thought", "content": content.strip()})
                             for tc in tool_calls:
                                 tool_name = tc.get("name", "未知工具") if isinstance(tc, dict) else getattr(tc, "name", "未知工具")
                                 tool_args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
-                                # 如果有思考文本，先推送 thought
-                                if content and content.strip():
-                                    yield {"type": "thought", "content": content.strip()}
-                                # 推送 action
                                 args_str = str(tool_args) if tool_args else ""
-                                yield {
+                                pending.append({
                                     "type": "action",
                                     "tool": tool_name,
                                     "input": args_str,
-                                }
+                                })
                         else:
-                            # 没有工具调用，是最终答案（或中间纯文本思考）
+                            # 没有工具调用的 AI 文本：可能是最终答案，也可能只是中间思考。
+                            # 先缓冲，等下一轮 update 到来时 flush 为 thought；
+                            # 若到流结束都没有新 update，说明这就是最终答案
                             if content and content.strip():
-                                if node_name == "agent":
-                                    # 检查是否是最终答案（后面没有更多步骤）
-                                    # 简单处理：作为潜在答案推送，最后确认
-                                    final_answer = content.strip()
-                                    yield {"type": "answer", "content": content.strip()}
-                                else:
-                                    yield {"type": "thought", "content": content.strip()}
+                                pending.append({"type": "answer", "content": content.strip()})
                     elif msg_type == "ToolMessage":
                         # 工具返回结果
-                        content = getattr(msg, "content", "") or ""
-                        yield {"type": "observation", "content": str(content)}
+                        obs_content = getattr(msg, "content", "") or ""
+                        pending.append({"type": "observation", "content": str(obs_content)})
+        # 流结束，缓冲里剩下的就是最终答案
+        for ev in pending:
+            if ev["type"] == "answer" and not final_answer:
+                final_answer = ev["content"]
+            yield ev
         # 结束标记
         yield {"type": "done", "content": final_answer}
     except Exception as e:
