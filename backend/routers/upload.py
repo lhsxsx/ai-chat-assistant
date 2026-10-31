@@ -1,14 +1,14 @@
 import os
 import shutil
+import uuid
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from dotenv import load_dotenv
 
 # LangChain 相关导入
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
-from embeddings import get_embeddings
+from embeddings import get_embeddings, get_vector_db_dir
 from auth import get_current_user
 from database import create_document, delete_document, list_documents
 
@@ -17,7 +17,7 @@ load_dotenv()
 router = APIRouter(prefix="/upload", tags=["文件上传"])
 
 TEMP_DIR = "./temp"
-VECTOR_DB_DIR = "./chroma_db"  # 向量库持久化目录
+VECTOR_DB_DIR = get_vector_db_dir()  # 向量库持久化目录（按嵌入模型隔离）
 
 # 确保目录存在
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -25,6 +25,15 @@ os.makedirs(VECTOR_DB_DIR, exist_ok=True)
 
 # 初始化嵌入模型（本地 bge-small-zh，与检索端保持一致）
 embeddings = get_embeddings()
+
+
+def _remove_temp(file_path: str) -> None:
+    """清理临时文件。Windows 下 PDF 解析器可能短暂占用文件句柄，删除失败不影响主流程。"""
+    try:
+        os.remove(file_path)
+        os.rmdir(os.path.dirname(file_path))
+    except OSError:
+        pass
 
 
 @router.post("/")
@@ -36,12 +45,14 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
     if not file.filename.endswith('.pdf'):
         raise HTTPException(400, detail="目前仅支持 PDF 文件")
 
-    # 2. 保存到临时目录
-    file_path = os.path.join(TEMP_DIR, file.filename)
+    # 2. 保存到临时目录（每个请求独立子目录，避免同名文件互相占用）
+    file_path = os.path.join(TEMP_DIR, uuid.uuid4().hex, file.filename)
     try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
+        _remove_temp(file_path)
         raise HTTPException(500, detail=f"文件保存失败：{str(e)}")
 
     # 3. 加载 PDF 并切片
@@ -82,13 +93,11 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
 
     except Exception as e:
         # 如果处理失败，清理临时文件并报错
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        _remove_temp(file_path)
         raise HTTPException(500, detail=f"PDF 处理失败：{str(e)}")
 
     # 6. 清理临时文件
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    _remove_temp(file_path)
 
     # 7. 返回成功信息
     return {

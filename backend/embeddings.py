@@ -14,6 +14,16 @@ LOCAL_MODEL = os.getenv("LOCAL_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
 _embeddings = None
 
 
+def get_vector_db_dir() -> str:
+    """
+    向量库目录按嵌入模型隔离：本地模型与 embedding-3 维度不同（512 vs 2048），
+    共用同一个 collection 会报维度不匹配，因此各用各的目录。
+    """
+    if os.getenv("VECTOR_DB_DIR"):
+        return os.environ["VECTOR_DB_DIR"]
+    return "./chroma_db" if os.getenv("EMBEDDING_BACKEND", "local") == "api" else "./chroma_db_local"
+
+
 def get_embeddings():
     """
     嵌入模型单例，避免每次请求重新加载模型权重。

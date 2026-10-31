@@ -15,6 +15,7 @@ venv/
 
 # ===== Chroma 向量库 =====
 chroma_db/
+chroma_db_local/
 
 # ===== 临时文件 =====
 temp/

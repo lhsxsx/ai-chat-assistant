@@ -7,12 +7,12 @@ from langchain_core.tools import tool
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
-from embeddings import get_embeddings
+from embeddings import get_embeddings, get_vector_db_dir
 
 load_dotenv()
 
 # ========== 1. 向量库（和 RAG 共用） ==========
-VECTOR_DB_DIR = "./chroma_db"
+VECTOR_DB_DIR = get_vector_db_dir()
 embeddings = get_embeddings()
 
 # 当前请求的用户 ID（调用 Agent 前注入，供知识库工具做租户隔离）

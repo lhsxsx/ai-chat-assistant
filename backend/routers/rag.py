@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
-from embeddings import get_embeddings
+from embeddings import get_embeddings, get_vector_db_dir
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import AIMessage, HumanMessage
 from database import add_message, get_recent_messages
@@ -18,7 +18,7 @@ load_dotenv()
 router = APIRouter(prefix="/rag", tags=["RAG 知识库问答"])
 
 # 向量库持久化目录（必须和上传接口保持一致）
-VECTOR_DB_DIR = "./chroma_db"
+VECTOR_DB_DIR = get_vector_db_dir()
 
 # 携带的最近对话轮数（1 轮 = 1 问 + 1 答，即 2 条消息）
 HISTORY_MESSAGES = 6
