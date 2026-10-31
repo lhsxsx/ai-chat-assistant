@@ -23,7 +23,8 @@
 ## 功能
 
 - **Chat 流式对话**：基于 SSE 逐 token 推送，前端打字机效果，支持中断生成
-- **RAG 知识库问答**：上传 PDF → 切片 → 向量化 → 相似度检索 → 上下文拼装，回答带来源溯源
+- **RAG 知识库问答**：上传 PDF → 切片 → 向量化 → 相似度检索 → 上下文拼装，同样走 SSE 逐 token 输出，携带最近几轮对话，回答带来源溯源
+- **知识库文档管理**：文档记录存入 PostgreSQL，列表与删除均按 `user_id` 隔离，删除时同步清理向量切片
 - **Agent 智能体**：基于 LangChain 工具调用（知识库检索 / 搜索引擎 / 当前时间），前端可视化思考过程
 - **多用户体系**：JWT 鉴权，会话与消息按 `user_id` 隔离，对话历史持久化到 PostgreSQL
 
@@ -53,9 +54,10 @@
 backend/
   main.py              应用入口、CORS、路由注册、前端静态托管
   auth.py              密码哈希（pbkdf2）与 JWT 签发/校验、鉴权依赖
-  database.py          ORM 模型（users / conversations / messages）与 CRUD
+  database.py          ORM 模型（users / conversations / messages / documents）与 CRUD
   routers/             chat、rag、agent、upload、history、auth 各业务路由
   services/            agent_service.py（Agent 构建与流式事件）
+  eval/                RAG 检索评测（questions.json + retrieval_eval.py）
 frontend/
   src/App.tsx          主界面（三种模式切换、会话列表、知识库）
   src/useChatStream.ts 流式通信、会话管理、SSE 解析
@@ -115,7 +117,18 @@ npm run dev
 
 访问 http://localhost:5173
 
+## 检索评测
+
+`backend/eval/questions.json` 里是针对所选 PDF 可回答的 32 道题，`retrieval_eval.py` 按当前切片与检索配置（500/50、k=3）测量 top-k 命中率：
+
+```bash
+cd backend
+.venv\Scripts\python.exe eval\retrieval_eval.py --pdf "temp/你要评测的文件.pdf"
+```
+
+题目按关键词判定命中，结果写入 `eval/last_report.json`（该文件不入库）。
+
 ## 说明
 
-- 知识库按 `user_id` 做租户隔离：上传时给切片打 `user_id` 标记，检索时按该字段过滤，用户之间无法互相检索私有文档
+- 知识库按 `user_id` 做租户隔离：上传时给切片打 `user_id` 与 `document_id` 标记，检索时按 `user_id` 过滤，删除时按 `document_id` 清理向量，用户之间无法互相检索或删除文档
 - `.env` 已在 `.gitignore` 中忽略，请勿提交密钥

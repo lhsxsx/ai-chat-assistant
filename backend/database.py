@@ -4,6 +4,7 @@
 - users: 用户（id, username, password_hash, salt, created_at）
 - conversations: 会话（id, user_id, title, mode, created_at, updated_at）
 - messages: 消息（id, conversation_id, role, content, sources_json, created_at）
+- documents: 知识库文档（id, user_id, filename, chunks_count, pages, created_at）
 """
 import os
 import json
@@ -76,6 +77,31 @@ class Message(Base):
             "role": self.role,
             "content": self.content,
             "sources": json.loads(self.sources_json) if self.sources_json else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Document(Base):
+    """知识库文档：记录用户上传过哪些 PDF，用于列表展示与按用户删除。
+
+    向量切片存在 Chroma 中，metadata 里带上 document_id，删除时按此清理。
+    """
+
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)  # 原始文件名（不含路径）
+    chunks_count = Column(Integer, nullable=False, default=0)  # 切片数量
+    pages = Column(Integer, nullable=False, default=0)  # 页数
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.filename,
+            "chunks": self.chunks_count,
+            "pages": self.pages,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -240,3 +266,68 @@ def rename_conversation(conversation_id: int, user_id: int, title: str) -> dict 
             "title": conv.title,
             "mode": conv.mode,
         }
+
+
+def get_recent_messages(conversation_id: int, user_id: int, limit: int = 6) -> list[dict]:
+    """取某会话最近 limit 条消息（按时间正序返回），用于给 RAG 提供多轮上下文。
+
+    会话不属于该 user_id 时返回空列表。
+    """
+    with get_db() as db:
+        conv = (
+            db.query(Conversation)
+            .filter(Conversation.id == conversation_id, Conversation.user_id == user_id)
+            .first()
+        )
+        if conv is None:
+            return []
+        recent = (
+            db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .order_by(Message.id.desc())
+            .limit(limit)
+            .all()
+        )
+        return [{"role": m.role, "content": m.content} for m in reversed(recent)]
+
+
+# ========== Document CRUD（均带 user_id 隔离） ==========
+def create_document(user_id: int, filename: str, chunks_count: int, pages: int) -> dict:
+    """登记一份上传的文档，返回包含 id 的 dict（向量切片需带上该 id）。"""
+    with get_db() as db:
+        doc = Document(
+            user_id=user_id,
+            filename=filename,
+            chunks_count=chunks_count,
+            pages=pages,
+        )
+        db.add(doc)
+        db.flush()
+        return doc.to_dict()
+
+
+def list_documents(user_id: int) -> list[dict]:
+    """列出某用户上传的文档（按上传时间倒序）。"""
+    with get_db() as db:
+        docs = (
+            db.query(Document)
+            .filter(Document.user_id == user_id)
+            .order_by(Document.created_at.desc())
+            .all()
+        )
+        return [d.to_dict() for d in docs]
+
+
+def delete_document(document_id: int, user_id: int) -> dict | None:
+    """删除文档记录。不属于该用户时返回 None，成功则返回被删文档信息。"""
+    with get_db() as db:
+        doc = (
+            db.query(Document)
+            .filter(Document.id == document_id, Document.user_id == user_id)
+            .first()
+        )
+        if doc is None:
+            return None
+        result = doc.to_dict()
+        db.delete(doc)
+        return result
