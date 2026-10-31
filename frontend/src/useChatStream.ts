@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 export type ChatMode = 'chat' | 'rag' | 'agent'
 
 export interface Message {
+  id: number
   role: 'user' | 'assistant'
   content: string
   streaming?: boolean
@@ -86,6 +87,10 @@ const MODE_ENDPOINT: Record<ChatMode, string> = {
   agent: '/agent/stream',
 }
 
+// 消息自增 id：用于稳定的 React key，避免会话切换时组件状态错位
+let messageSeq = 0
+const nextMessageId = () => ++messageSeq
+
 export function useChat(getAuthHeaders?: () => Record<string, string>) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
@@ -113,6 +118,50 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
       })
     },
     []
+  )
+
+  // ===== 流式 token 合批：先写进 ref，每帧只提交一次 state =====
+  const pendingTextRef = useRef('')
+  const rafRef = useRef<number | null>(null)
+
+  const flushPending = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    const text = pendingTextRef.current
+    if (!text) return
+    pendingTextRef.current = ''
+    updateLastAssistant((last) => ({ ...last, content: last.content + text }))
+  }, [updateLastAssistant])
+
+  const appendText = useCallback(
+    (text: string) => {
+      if (!text) return
+      pendingTextRef.current += text
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null
+          const buffered = pendingTextRef.current
+          if (!buffered) return
+          pendingTextRef.current = ''
+          updateLastAssistant((last) => ({ ...last, content: last.content + buffered }))
+        })
+      }
+    },
+    [updateLastAssistant]
+  )
+
+  // 出错信息：先把缓冲区刷出去，再追加错误文案，保证顺序正确
+  const appendError = useCallback(
+    (message: string) => {
+      flushPending()
+      updateLastAssistant((last) => ({
+        ...last,
+        content: (last.content ? last.content + '\n\n' : '') + `[出错] ${message}`,
+      }))
+    },
+    [flushPending, updateLastAssistant]
   )
 
   // ===== 会话管理 =====
@@ -173,6 +222,7 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
         const data = await resp.json().catch(() => null)
         if (resp.ok && data?.messages) {
           const msgs: Message[] = data.messages.map((m: any) => ({
+            id: nextMessageId(),
             role: m.role,
             content: m.content,
             sources: m.sources,
@@ -246,21 +296,15 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
         buffer = rest
         for (const ev of events) {
           if (ev.token) {
-            updateLastAssistant((last) => ({
-              ...last,
-              content: last.content + ev.token!,
-            }))
+            appendText(ev.token)
           }
           if (ev.error) {
-            updateLastAssistant((last) => ({
-              ...last,
-              content: (last.content ? last.content + '\n\n' : '') + `[出错] ${ev.error}`,
-            }))
+            appendError(ev.error)
           }
         }
       }
     },
-    [updateLastAssistant, getAuthHeaders]
+    [appendText, appendError, getAuthHeaders]
   )
 
   // RAG 专用：调用 /rag/stream，先收到来源事件，再逐 token 输出答案
@@ -298,21 +342,15 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
             continue
           }
           if (ev.token) {
-            updateLastAssistant((last) => ({
-              ...last,
-              content: last.content + ev.token!,
-            }))
+            appendText(ev.token)
           }
           if (ev.error) {
-            updateLastAssistant((last) => ({
-              ...last,
-              content: (last.content ? last.content + '\n\n' : '') + `[出错] ${ev.error}`,
-            }))
+            appendError(ev.error)
           }
         }
       }
     },
-    [updateLastAssistant, getAuthHeaders]
+    [appendText, appendError, getAuthHeaders]
   )
 
   // Agent 专用：调用 /agent/stream，消费思考过程事件
@@ -394,8 +432,8 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
 
       setMessages((prev) => [
         ...prev,
-        { role: 'user', content: text, mode },
-        { role: 'assistant', content: '', streaming: true, mode },
+        { id: nextMessageId(), role: 'user', content: text, mode },
+        { id: nextMessageId(), role: 'assistant', content: '', streaming: true, mode },
       ])
       setLoading(true)
 
@@ -417,12 +455,11 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
         if (msg.includes('aborted')) {
           // 用户主动中止
         } else {
-          updateLastAssistant((last) => ({
-            ...last,
-            content: (last.content ? last.content + '\n\n' : '') + `[出错] ${msg}`,
-          }))
+          appendError(msg)
         }
       } finally {
+        // 先把 rAF 缓冲里剩余的 token 提交，再结束流式状态
+        flushPending()
         updateLastAssistant((last) => ({ ...last, streaming: false }))
         setLoading(false)
         abortRef.current = null
@@ -439,6 +476,8 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
       sendAgentStream,
       sendRagStream,
       updateLastAssistant,
+      appendError,
+      flushPending,
       refreshConversations,
     ]
   )

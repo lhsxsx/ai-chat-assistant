@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { useChat, type ChatMode } from './useChatStream'
-import { ThinkingPanel } from './ThinkingPanel'
+import { MessageRow } from './MessageRow'
+import { IconSpark, IconUser } from './icons'
 import { useAuth } from './useAuth'
 import { LoginPage } from './LoginPage'
 import './App.css'
@@ -29,17 +28,11 @@ const IconChat = () => (
 const IconDoc = () => (
   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>
 )
-const IconSpark = ({ size = 15 }: { size?: number }) => (
-  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor"><path d="M12 2l2.35 6.65L21 11l-6.65 2.35L12 20l-2.35-6.65L3 11l6.65-2.35L12 2z" /></svg>
-)
 const IconSend = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>
 )
 const IconStop = () => (
   <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>
-)
-const IconUser = () => (
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 12a4.5 4.5 0 1 0-4.5-4.5A4.5 4.5 0 0 0 12 12zm0 2.2c-4.5 0-8.2 2.3-8.2 5.1V21h16.4v-1.7c0-2.8-3.7-5.1-8.2-5.1z" /></svg>
 )
 const IconBook = () => (
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
@@ -106,10 +99,35 @@ function App() {
     }
   }, [refreshConversations, fetchKnowledgeList, auth.isAuthenticated])
 
+  // 自动跟随到底部：用 rAF 合批，且用户手动上滑后不再强行拉回
+  const followRef = useRef(true)
+  const [showJump, setShowJump] = useState(false)
+
   useEffect(() => {
+    if (!followRef.current) return
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    const raf = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
+    return () => cancelAnimationFrame(raf)
   }, [messages])
+
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    followRef.current = nearBottom
+    setShowJump(!nearBottom)
+  }
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current
+    if (!el) return
+    followRef.current = true
+    setShowJump(false)
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }
 
   useEffect(() => {
     if (!toast) return
@@ -149,6 +167,8 @@ function App() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || loading) return
+    followRef.current = true
+    setShowJump(false)
     send(input)
     setInput('')
   }
@@ -314,7 +334,7 @@ function App() {
           </div>
         </header>
 
-        <div className="chat-messages" ref={scrollRef}>
+        <div className="chat-messages" ref={scrollRef} onScroll={handleScroll}>
           {messages.length === 0 && (
             <div className="empty-tip">
               <div className="empty-logo"><IconSpark size={30} /></div>
@@ -337,48 +357,18 @@ function App() {
             </div>
           )}
 
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`msg-row ${msg.role}`}>
-              <div className={`msg-avatar ${msg.role === 'user' ? 'avatar-user' : 'avatar-bot'}`}>
-                {msg.role === 'user' ? <IconUser /> : <IconSpark size={17} />}
-              </div>
-              <div className="msg-main">
-                {msg.mode && <div className="msg-mode-tag">{MODE_LABEL[msg.mode]}</div>}
-                {/* Agent 思考过程折叠面板 */}
-                {msg.role === 'assistant' &&
-                  msg.steps &&
-                  msg.steps.length > 0 && (
-                    <ThinkingPanel steps={msg.steps} streaming={msg.streaming} />
-                  )}
-                <div className="msg-bubble">
-                  {msg.role === 'assistant' ? (
-                    <div className="msg-content markdown">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                      {msg.streaming && <span className="cursor">▍</span>}
-                    </div>
-                  ) : (
-                    <div className="msg-content">
-                      {msg.content}
-                      {msg.streaming && <span className="cursor">▍</span>}
-                    </div>
-                  )}
-                </div>
-                {msg.role === 'assistant' &&
-                  !msg.streaming &&
-                  msg.sources &&
-                  msg.sources.length > 0 && (
-                    <div className="msg-sources">
-                      <span className="sources-title">📎 引用来源（{msg.retrievedCount} 块）:</span>
-                      <ul>
-                        {msg.sources.map((s, i) => (
-                          <li key={i}>{s}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-              </div>
-            </div>
+          {messages.map((msg) => (
+            <MessageRow
+              key={msg.id}
+              msg={msg}
+              modeLabel={msg.mode ? MODE_LABEL[msg.mode] : undefined}
+            />
           ))}
+          {showJump && (
+            <button className="jump-bottom" onClick={scrollToBottom}>
+              回到底部
+            </button>
+          )}
         </div>
 
         {/* ===== 底部输入区 + 模式切换 ===== */}

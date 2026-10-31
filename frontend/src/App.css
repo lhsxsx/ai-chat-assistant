@@ -653,7 +653,28 @@ body {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  scroll-behavior: smooth;
+}
+
+/* 用户上滑查看历史时出现，点击回到底部 */
+.jump-bottom {
+  position: sticky;
+  bottom: 4px;
+  align-self: center;
+  margin-top: -6px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.jump-bottom:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
 }
 
 /* 空状态 */
