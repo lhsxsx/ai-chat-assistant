@@ -30,10 +30,11 @@ export interface Conversation {
 }
 
 export interface KnowledgeDocument {
+  id: number
   name: string
-  source: string
   chunks: number
   pages: number
+  created_at?: string
 }
 
 interface SSEParsed {
@@ -45,6 +46,9 @@ interface SSEParsed {
   content?: string
   tool?: string
   input?: string
+  // RAG 来源事件字段
+  sources?: string[]
+  retrieved_count?: number
 }
 
 function parseSSEBuffer(buffer: string): { events: SSEParsed[]; rest: string } {
@@ -76,9 +80,10 @@ function parseSSEBuffer(buffer: string): { events: SSEParsed[]; rest: string } {
   return { events, rest: last }
 }
 
-const MODE_ENDPOINT: Record<Exclude<ChatMode, 'chat'>, string> = {
-  rag: '/rag/',
-  agent: '/agent/',
+const MODE_ENDPOINT: Record<ChatMode, string> = {
+  chat: '/chat/stream',
+  rag: '/rag/stream',
+  agent: '/agent/stream',
 }
 
 export function useChat(getAuthHeaders?: () => Record<string, string>) {
@@ -258,38 +263,54 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
     [updateLastAssistant, getAuthHeaders]
   )
 
-  const sendNonStream = useCallback(
-    async (question: string, convId: number | null, currentMode: ChatMode, controller: AbortController) => {
-      const endpoint = MODE_ENDPOINT[currentMode as Exclude<ChatMode, 'chat'>]
-      const resp = await fetch(endpoint, {
+  // RAG 专用：调用 /rag/stream，先收到来源事件，再逐 token 输出答案
+  const sendRagStream = useCallback(
+    async (question: string, convId: number | null, controller: AbortController) => {
+      const resp = await fetch(MODE_ENDPOINT.rag, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(getAuthHeaders?.() || {}) },
         body: JSON.stringify({ question, conversation_id: convId }),
         signal: controller.signal,
       })
-      const data = await resp.json().catch(() => ({}))
-      if (!resp.ok) {
-        throw new Error(data.detail || `请求失败 ${resp.status}`)
+      if (!resp.ok || !resp.body) {
+        const detail = await resp.text().catch(() => '')
+        throw new Error(`请求失败 ${resp.status} ${detail}`)
       }
-      const answer: string = data.answer || '(空回答)'
-      const sources: string[] = data.sources || []
-      const retrievedCount: number = data.retrieved_count ?? 0
-      for (let i = 0; i < answer.length; i++) {
-        if (controller.signal.aborted) return
-        updateLastAssistant((last) => ({
-          ...last,
-          content: answer.slice(0, i + 1),
-          sources,
-          retrievedCount,
-        }))
-        await new Promise((r) => setTimeout(r, 20))
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const { events, rest } = parseSSEBuffer(buffer)
+        buffer = rest
+        for (const ev of events) {
+          // 来源事件：先展示引用了哪些文件
+          if (ev.type === 'sources') {
+            const sources = ev.sources || []
+            const retrievedCount = ev.retrieved_count ?? 0
+            updateLastAssistant((last) => ({
+              ...last,
+              sources,
+              retrievedCount,
+            }))
+            continue
+          }
+          if (ev.token) {
+            updateLastAssistant((last) => ({
+              ...last,
+              content: last.content + ev.token!,
+            }))
+          }
+          if (ev.error) {
+            updateLastAssistant((last) => ({
+              ...last,
+              content: (last.content ? last.content + '\n\n' : '') + `[出错] ${ev.error}`,
+            }))
+          }
+        }
       }
-      updateLastAssistant((last) => ({
-        ...last,
-        content: answer,
-        sources,
-        retrievedCount,
-      }))
     },
     [updateLastAssistant, getAuthHeaders]
   )
@@ -388,7 +409,8 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
           // Agent 模式走 SSE 流式，展示思考过程
           await sendAgentStream(text, convId, controller)
         } else {
-          await sendNonStream(text, convId, mode, controller)
+          // RAG 模式走 SSE 流式，先拿来源再逐 token 输出
+          await sendRagStream(text, convId, controller)
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -415,7 +437,7 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
       createConversation,
       sendStream,
       sendAgentStream,
-      sendNonStream,
+      sendRagStream,
       updateLastAssistant,
       refreshConversations,
     ]
@@ -477,6 +499,21 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
     }
   }, [getAuthHeaders])
 
+  const deleteKnowledge = useCallback(
+    async (documentId: number) => {
+      const resp = await fetch(`/upload/knowledge/${documentId}`, {
+        method: 'DELETE',
+        headers: { ...(getAuthHeaders?.() || {}) },
+      })
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        throw new Error(data.detail || `删除失败 ${resp.status}`)
+      }
+      setKnowledgeList((prev) => prev.filter((d) => d.id !== documentId))
+    },
+    [getAuthHeaders]
+  )
+
   return {
     messages,
     loading,
@@ -495,6 +532,7 @@ export function useChat(getAuthHeaders?: () => Record<string, string>) {
     knowledgeList,
     loadingKnowledge,
     fetchKnowledgeList,
+    deleteKnowledge,
     // 操作
     send,
     stop,

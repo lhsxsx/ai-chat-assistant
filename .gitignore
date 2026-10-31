@@ -33,3 +33,6 @@ Thumbs.db
 
 # ===== 个人资料 =====
 *.docx
+
+# ===== 评测输出 =====
+backend/eval/last_report.json

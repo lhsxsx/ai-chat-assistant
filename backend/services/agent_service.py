@@ -7,7 +7,6 @@ from langchain_core.tools import tool
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_chroma import Chroma
-from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
 
@@ -39,7 +38,8 @@ def _get_user_retriever(user_id: int | None):
 # ========== 2. 工具1：知识库检索 ==========
 @tool("知识库检索")
 def rag_tool_func(query: str) -> str:
-    """从用户上传的 PDF 文档知识库中检索信息并生成回答。
+    """从用户上传的 PDF 文档知识库中检索原文片段。
+    只返回命中的文本片段与来源文件名，不做二次总结，由你自己根据片段组织答案。
     当问题明确涉及“文档内容”“上传的文件”“知识库”时，优先使用这个工具。
     输入 query 为用户原始问题或检索关键词。"""
     retriever = _get_user_retriever(current_user_id.get())
@@ -51,21 +51,14 @@ def rag_tool_func(query: str) -> str:
         if not docs:
             return "知识库中未找到相关信息，建议换个关键词或上传更多相关文档后再试。"
 
-        context = "\n\n---\n\n".join([doc.page_content for doc in docs])
-
-        llm = ChatOpenAI(
-            model=os.getenv("MODEL_NAME"),
-            api_key=os.getenv("OPENAI_API_KEY"),
-            base_url=os.getenv("OPENAI_API_BASE"),
-            temperature=0.2
-        )
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "根据以下上下文回答问题：\n{context}"),
-            ("human", "{question}")
-        ])
-        chain = prompt | llm
-        answer = chain.invoke({"context": context, "question": query})
-        result = answer.content if answer and answer.content else "知识库中未能生成有效回答。"
+        # 只拼接原文片段 + 文件名，不在工具内部再调用一次模型
+        parts = []
+        for doc in docs:
+            source = os.path.basename(doc.metadata.get("source", "未知来源"))
+            page = doc.metadata.get("page")
+            header = f"【{source}】" if not isinstance(page, int) else f"【{source} 第{page + 1}页】"
+            parts.append(f"{header}\n{doc.page_content}")
+        result = "\n\n---\n\n".join(parts)
     except Exception as e:
         result = f"知识库检索失败：{e}"
 

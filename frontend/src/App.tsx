@@ -49,6 +49,7 @@ function App() {
     knowledgeList,
     loadingKnowledge,
     fetchKnowledgeList,
+    deleteKnowledge,
     send,
     stop,
     changeMode,
@@ -143,6 +144,16 @@ function App() {
     }
   }
 
+  const handleDeleteKnowledge = async (documentId: number, name: string) => {
+    if (!confirm(`确定删除文档「${name}」？删除后该文档将不再参与检索。`)) return
+    try {
+      await deleteKnowledge(documentId)
+      setToast(`✅ 已删除 ${name}`)
+    } catch (err) {
+      setToast(`❌ ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   return (
     <div className="app-layout">
       {/* ===== 左侧 Sidebar（仅登录后显示）===== */}
@@ -194,14 +205,21 @@ function App() {
             {knowledgeList.length === 0 && !loadingKnowledge && (
               <div className="knowledge-empty">暂无文档，请上传 PDF</div>
             )}
-            {knowledgeList.map((doc, idx) => (
-              <div key={idx} className="knowledge-item">
-                <div className="knowledge-item-name">{doc.name}</div>
+            {knowledgeList.map((doc) => (
+              <div key={doc.id} className="knowledge-item">
+                <div className="knowledge-item-name" title={doc.name}>{doc.name}</div>
                 <div className="knowledge-item-meta">
                   <span>{doc.chunks} 块</span>
                   <span>·</span>
                   <span>{doc.pages} 页</span>
                 </div>
+                <button
+                  className="knowledge-delete"
+                  title="删除文档"
+                  onClick={() => handleDeleteKnowledge(doc.id, doc.name)}
+                >
+                  ×
+                </button>
               </div>
             ))}
           </div>

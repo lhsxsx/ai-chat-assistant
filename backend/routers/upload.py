@@ -9,6 +9,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from auth import get_current_user
+from database import create_document, delete_document, list_documents
 
 load_dotenv()
 
@@ -61,11 +62,21 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
         if not chunks:
             raise Exception("PDF 内容为空，无法处理")
 
-        # 给每个切片打上 user_id 标记，检索时按此过滤，避免跨用户读取私有文档
+        # 4. 先在 PostgreSQL 登记文档，拿到 document_id 后再写向量
+        doc = create_document(
+            user_id=user["user_id"],
+            filename=file.filename,
+            chunks_count=len(chunks),
+            pages=len(documents),
+        )
+
+        # 给每个切片打上 user_id 与 document_id 标记：
+        # user_id 用于检索时按用户过滤，document_id 用于删除时批量清理向量
         for chunk in chunks:
             chunk.metadata["user_id"] = user["user_id"]
+            chunk.metadata["document_id"] = doc["id"]
 
-        # 4. 向量化并存入 Chroma（持久化，新版自动落盘无需 persist()）
+        # 5. 向量化并存入 Chroma（持久化，新版自动落盘无需 persist()）
         vector_store = Chroma.from_documents(
             documents=chunks,
             embedding=embeddings,
@@ -78,82 +89,52 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
             os.remove(file_path)
         raise HTTPException(500, detail=f"PDF 处理失败：{str(e)}")
 
-    # 5. 清理临时文件
+    # 6. 清理临时文件
     if os.path.exists(file_path):
         os.remove(file_path)
 
-    # 6. 返回成功信息
+    # 7. 返回成功信息
     return {
         "message": f"文件 {file.filename} 上传并向量化成功",
+        "document_id": doc["id"],
         "chunks_count": len(chunks),  # 共切成了多少块
-        "vector_db_path": VECTOR_DB_DIR
+        "pages": len(documents),
     }
 
 
 @router.get("/knowledge")
 async def get_knowledge_list(user: dict = Depends(get_current_user)):
     """
-    获取知识库（Chroma 向量库）中所有文档的列表
-    返回每个文档的来源、切片数量等信息
+    获取当前用户的知识库文档列表（数据来自 PostgreSQL 的 documents 表）
     """
+    documents = list_documents(user["user_id"])
+    return {
+        "documents": documents,
+        "total_chunks": sum(d["chunks"] for d in documents),
+        "total_sources": len(documents),
+    }
+
+
+@router.delete("/knowledge/{document_id}")
+async def delete_knowledge(document_id: int, user: dict = Depends(get_current_user)):
+    """
+    删除当前用户自己上传的文档：同时清理 PostgreSQL 记录与 Chroma 向量切片
+    """
+    # 1. 校验归属并删除数据库记录
+    doc = delete_document(document_id, user["user_id"])
+    if doc is None:
+        raise HTTPException(404, detail="文档不存在或无权删除")
+
+    # 2. 清理该文档对应的向量切片
     try:
-        # 加载向量库
         vector_store = Chroma(
             persist_directory=VECTOR_DB_DIR,
             embedding_function=embeddings
         )
-        
-        # 获取所有文档的元数据（只统计当前用户自己的文档）
-        collection = vector_store.get(where={"user_id": user["user_id"]})
-        
-        if not collection or not collection['ids']:
-            return {
-                "documents": [],
-                "total_chunks": 0,
-                "total_sources": 0
-            }
-        
-        # 按 source 分组统计
-        source_stats = {}
-        for i, metadata in enumerate(collection['metadatas']):
-            source = metadata.get('source', '未知来源') if metadata else '未知来源'
-            page = metadata.get('page', 0) if metadata else 0
-            
-            if source not in source_stats:
-                source_stats[source] = {
-                    'source': source,
-                    'chunks': 0,
-                    'pages': set()
-                }
-            source_stats[source]['chunks'] += 1
-            source_stats[source]['pages'].add(page)
-        
-        # 转换为列表并排序
-        documents = []
-        for source, stats in sorted(source_stats.items()):
-            # 从文件名提取显示名称（去除路径）
-            display_name = os.path.basename(source) if source != '未知来源' else source
-            documents.append({
-                'name': display_name,
-                'source': source,
-                'chunks': stats['chunks'],
-                'pages': len(stats['pages'])
-            })
-        
-        total_chunks = sum(d['chunks'] for d in documents)
-        
-        return {
-            "documents": documents,
-            "total_chunks": total_chunks,
-            "total_sources": len(documents)
-        }
-        
+        vector_store.delete(where={"document_id": document_id})
     except Exception as e:
-        # 如果向量库不存在或为空，返回空列表
-        if 'does not exist' in str(e).lower() or 'not found' in str(e).lower():
-            return {
-                "documents": [],
-                "total_chunks": 0,
-                "total_sources": 0
-            }
-        raise HTTPException(status_code=500, detail=f"获取知识库列表失败：{str(e)}")
+        # 向量库为空或不存在时忽略，数据库记录已删除
+        if 'does not exist' not in str(e).lower() and 'not found' not in str(e).lower():
+            raise HTTPException(500, detail=f"向量清理失败：{str(e)}")
+
+    return {"message": f"文档 {doc['name']} 已删除", "document_id": document_id}
